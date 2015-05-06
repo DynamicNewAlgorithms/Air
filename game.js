@@ -32,11 +32,10 @@ M = {
 	" ":0,
 	"*":1,
 	"H":2,
-	"C":3,
-	""
+	"C":3
 }
 G = {
-	testing: true
+	testing: false
 };
 
 // material
@@ -89,11 +88,27 @@ var material = {
 PS.init = function( system, options ) {
 	"use strict";
 	PS.gridSize( 8, 8 );
+    for(var x = 0; x < 8; x++){
+        for(var y = 0; y < 8; y++){
+            var ap = 1;
+            if (x == 0 || y == 0 || x == 7 || y == 7) {
+                ap = 0;
+            }
+            PS.data(x,y,new Block(0,ap));
+        }
+    }
+    PS.data(3,3).air_permeability = 0;
+    PS.data(4,3).air_permeability = 0;
+    PS.data(3,4).air_permeability = 0;
+    PS.data(3,5).air_permeability = 0;
+    PS.data(4,5).air_permeability = 0;
+    PS.timerStart(10,draw);
 
 };
 
 PS.touch = function( x, y, data, options ) {
 	"use strict";
+    data.air = 10;
 };
 
 
@@ -104,6 +119,7 @@ PS.release = function( x, y, data, options ) {
 
 PS.enter = function( x, y, data, options ) {
 	"use strict";
+    PS.statusText(data.air)
 };
 
 
@@ -136,40 +152,98 @@ PS.input = function( sensors, options ) {
 
 };
 // ======================================================================================================= BLOCK PROTOTYPE
-function Block(air, material,temperature,air_permeability) {
+function Block(air, air_permeability) {
 	this.air = air;
 	this.air_permeability = air_permeability;
-	this.material = material;
-	this.temperature = temperature;
-	this.buffer_air = 0;
-	this.buffer_tempature = 0;
 }
 
 Block.prototype.move_air = function (left,top,right,bottom) {
-	if (this.material != material.HullMetal) {
+	if (this.air_permeability > 0) {
 
+        var l_diff = left.air   - this.air;
+        var t_diff = top.air    - this.air;
+        var r_diff = right.air  - this.air;
+        var b_diff = bottom.air - this.air;
+
+        var total = this.air;
+        var count = 1;
+        if (l_diff < 0) {
+            total += left.air;
+            count++;
+        }
+        if (t_diff < 0) {
+            total += top.air;
+            count++;
+        }
+        if (r_diff < 0) {
+            total += right.air;
+            count++;
+        }
+        if (b_diff < 0) {
+            total += bottom.air;
+            count++;
+        }
+        var each = Math.abs(total/count)*this.air_permeability;
+        this.air = each;
+        if (l_diff < 0) {
+            left.air = each;
+        }
+        if (t_diff < 0) {
+            top.air = each;
+        }
+        if (r_diff < 0) {
+            right.air = each;
+        }
+        if (b_diff < 0) {
+            bottom.air = each;
+        }
 	}
 };
 // ======================================================================================================= HELPERS
 var blank_data = function() {return new Block(0,material.Vacuum,0);};
-var vacume_block = function() {return new Block(0,)}
+var vacume_block = function() {return new Block(0,1)};
+
+var draw = function() {
+    for(x = 0; x < 8; x++){
+        for(y = 0; y < 8; y++){
+            data = PS.data(x,y);
+            data.move_air(
+                PS.data((((x - 1) % 8) + 8) % 8, (((y + 0) % 8) + 8) % 8),
+                PS.data((((x + 0) % 8) + 8) % 8, (((y - 1) % 8) + 8) % 8),
+                PS.data((((x + 1) % 8) + 8) % 8, (((y + 0) % 8) + 8) % 8),
+                PS.data((((x + 0) % 8) + 8) % 8, (((y + 1) % 8) + 8) % 8)
+            );
+            PS.color(x,y,Math.min(255,Math.round(data.air*1000)),200 - Math.round(data.air_permeability)*200,0);
+        }
+    }
+};
 
 //======================================================================================================== TESTS
 if (G.testing) {
-	QUnit.test( "Block Constructor threw PS bead's data.", function( assert ) {
-		PS.gridSize(3,3);
-		PS.data(PS.ALL,PS.ALL,blank_data());
+    QUnit.test("Block air flow", function(assert) {
 
-		d = PS.data(1,1);
+        var c = new Block(1,0.5);
+        var t = new Block(0.5,1);
+        var r = new Block(1,1);
+        var l = new Block(0,1);
+        var b = new Block(1,1);
 
-		assert.ok(d.air === 0);
-		assert.ok(d.material === material.Vacuum);
-		assert.ok(d.temperature === 0);
 
-		d.air = 100;
+        var total = c.air + t.air + r.air + l.air + b.air;
+        c.move_air(l,t,r,b);
+        assert.equal(c.air + t.air + r.air + l.air + b.air,total);
 
-		t = PS.data(1,1);
+        c = new Block(1,1);
+        t = new Block(0.25,1);
+        r = new Block(0.5,1);
+        l = new Block(0,1);
+        b = new Block(1,1);
 
-		assert.equal(t.air,100);
-	});
+
+        total = c.air + t.air + r.air + l.air + b.air;
+        c.move_air(l,t,r,b);
+        assert.equal(c.air + t.air + r.air + l.air + b.air,total);
+
+
+    });
 }
